@@ -19,7 +19,6 @@ vi.mock('child_process', () => ({
 }));
 
 import {
-  CONTAINER_RUNTIME_BIN,
   detectContainerRuntimeBin,
   readonlyMountArgs,
   stopContainer,
@@ -52,9 +51,9 @@ describe('readonlyMountArgs', () => {
 });
 
 describe('stopContainer', () => {
-  it('returns stop command using CONTAINER_RUNTIME_BIN', () => {
+  it('returns stop command using the detected runtime', () => {
     expect(stopContainer('nanoclaw-test-123')).toBe(
-      `${CONTAINER_RUNTIME_BIN} stop nanoclaw-test-123`,
+      `${detectContainerRuntimeBin()} stop nanoclaw-test-123`,
     );
   });
 });
@@ -83,8 +82,11 @@ describe('runtime selection', () => {
 });
 
 describe('Apple Container network addressing', () => {
-  it('uses the bridge100 IPv4 address for the proxy bind host on macOS', () => {
+  beforeEach(() => {
     vi.spyOn(os, 'platform').mockReturnValue('darwin');
+  });
+
+  it('uses the bridge100 IPv4 address for the proxy bind host on macOS', () => {
     vi.spyOn(os, 'networkInterfaces').mockReturnValue({
       bridge100: [
         {
@@ -102,7 +104,6 @@ describe('Apple Container network addressing', () => {
   });
 
   it('uses the bridge100 IPv4 address as the Apple Container host gateway', () => {
-    vi.spyOn(os, 'platform').mockReturnValue('darwin');
     vi.spyOn(os, 'networkInterfaces').mockReturnValue({
       bridge100: [
         {
@@ -162,16 +163,20 @@ describe('runtime commands', () => {
 // --- ensureContainerRuntimeRunning ---
 
 describe('ensureContainerRuntimeRunning', () => {
+  beforeEach(() => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+  });
+
   it('does nothing when runtime is already running', () => {
     mockExecSync.mockReturnValueOnce('');
 
     ensureContainerRuntimeRunning();
 
     expect(mockExecSync).toHaveBeenCalledTimes(1);
-    expect(mockExecSync).toHaveBeenCalledWith(
-      `${CONTAINER_RUNTIME_BIN} system status`,
-      { stdio: 'pipe', timeout: 30000 },
-    );
+    expect(mockExecSync).toHaveBeenCalledWith('container system status', {
+      stdio: 'pipe',
+      timeout: 30000,
+    });
     expect(logger.debug).toHaveBeenCalledWith(
       'Container runtime already running',
     );
@@ -188,11 +193,10 @@ describe('ensureContainerRuntimeRunning', () => {
     ensureContainerRuntimeRunning();
 
     expect(mockExecSync).toHaveBeenCalledTimes(2);
-    expect(mockExecSync).toHaveBeenNthCalledWith(
-      2,
-      `${CONTAINER_RUNTIME_BIN} system start`,
-      { stdio: 'pipe', timeout: 30000 },
-    );
+    expect(mockExecSync).toHaveBeenNthCalledWith(2, 'container system start', {
+      stdio: 'pipe',
+      timeout: 30000,
+    });
     expect(logger.info).toHaveBeenCalledWith('Container runtime started');
   });
 
@@ -211,6 +215,10 @@ describe('ensureContainerRuntimeRunning', () => {
 // --- cleanupOrphans ---
 
 describe('cleanupOrphans', () => {
+  beforeEach(() => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+  });
+
   it('stops orphaned nanoclaw containers from JSON output', () => {
     // Apple Container ls returns JSON
     const lsOutput = JSON.stringify([
@@ -229,12 +237,12 @@ describe('cleanupOrphans', () => {
     expect(mockExecSync).toHaveBeenCalledTimes(3);
     expect(mockExecSync).toHaveBeenNthCalledWith(
       2,
-      `${CONTAINER_RUNTIME_BIN} stop nanoclaw-group1-111`,
+      'container stop nanoclaw-group1-111',
       { stdio: 'pipe' },
     );
     expect(mockExecSync).toHaveBeenNthCalledWith(
       3,
-      `${CONTAINER_RUNTIME_BIN} stop nanoclaw-group3-333`,
+      'container stop nanoclaw-group3-333',
       { stdio: 'pipe' },
     );
     expect(logger.info).toHaveBeenCalledWith(

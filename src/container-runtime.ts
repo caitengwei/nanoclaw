@@ -20,11 +20,15 @@ export const CONTAINER_RUNTIME_BIN = detectContainerRuntimeBin();
 const APPLE_CONTAINER_BRIDGE_INTERFACE = 'bridge100';
 const DEFAULT_CONTAINER_HOST_GATEWAY = 'host.docker.internal';
 
-function isAppleContainerRuntime(runtimeBin = CONTAINER_RUNTIME_BIN): boolean {
+function isAppleContainerRuntime(
+  runtimeBin = detectContainerRuntimeBin(),
+): boolean {
   return runtimeBin === 'container';
 }
 
-export function getRuntimeStatusCommand(runtimeBin = CONTAINER_RUNTIME_BIN): {
+export function getRuntimeStatusCommand(
+  runtimeBin = detectContainerRuntimeBin(),
+): {
   command: string;
   timeout: number;
 } {
@@ -35,7 +39,7 @@ export function getRuntimeStatusCommand(runtimeBin = CONTAINER_RUNTIME_BIN): {
 }
 
 export function getRuntimeStartCommand(
-  runtimeBin = CONTAINER_RUNTIME_BIN,
+  runtimeBin = detectContainerRuntimeBin(),
 ): { command: string; timeout: number } | null {
   if (isAppleContainerRuntime(runtimeBin)) {
     return { command: `${runtimeBin} system start`, timeout: 30000 };
@@ -44,7 +48,7 @@ export function getRuntimeStartCommand(
 }
 
 export function getRuntimeErrorGuidance(
-  runtimeBin = CONTAINER_RUNTIME_BIN,
+  runtimeBin = detectContainerRuntimeBin(),
 ): string[] {
   if (isAppleContainerRuntime(runtimeBin)) {
     return [
@@ -142,11 +146,16 @@ export function readonlyMountArgs(
 }
 
 /** Returns the shell command to stop a container by name. */
-export function stopContainer(name: string): string {
-  return `${CONTAINER_RUNTIME_BIN} stop ${name}`;
+export function stopContainer(
+  name: string,
+  runtimeBin = detectContainerRuntimeBin(),
+): string {
+  return `${runtimeBin} stop ${name}`;
 }
 
-function printFatalRuntimeGuidance(runtimeBin = CONTAINER_RUNTIME_BIN): void {
+function printFatalRuntimeGuidance(
+  runtimeBin = detectContainerRuntimeBin(),
+): void {
   const lines = [
     'FATAL: Container runtime failed to start',
     '',
@@ -167,8 +176,9 @@ function printFatalRuntimeGuidance(runtimeBin = CONTAINER_RUNTIME_BIN): void {
 
 /** Ensure the container runtime is running, starting it if needed. */
 export function ensureContainerRuntimeRunning(): void {
-  const statusCommand = getRuntimeStatusCommand();
-  const startCommand = getRuntimeStartCommand();
+  const runtimeBin = detectContainerRuntimeBin();
+  const statusCommand = getRuntimeStatusCommand(runtimeBin);
+  const startCommand = getRuntimeStartCommand(runtimeBin);
 
   try {
     execSync(statusCommand.command, {
@@ -188,13 +198,13 @@ export function ensureContainerRuntimeRunning(): void {
         return;
       } catch (err) {
         logger.error({ err }, 'Failed to start container runtime');
-        printFatalRuntimeGuidance();
+        printFatalRuntimeGuidance(runtimeBin);
         throw new Error('Container runtime is required but failed to start');
       }
     }
 
     logger.error({ err: statusErr }, 'Failed to reach container runtime');
-    printFatalRuntimeGuidance();
+    printFatalRuntimeGuidance(runtimeBin);
     throw new Error('Container runtime is required but failed to start');
   }
 }
@@ -202,9 +212,10 @@ export function ensureContainerRuntimeRunning(): void {
 /** Kill orphaned NanoClaw containers from previous runs. */
 export function cleanupOrphans(): void {
   try {
+    const runtimeBin = detectContainerRuntimeBin();
     let orphans: string[];
-    if (isAppleContainerRuntime()) {
-      const output = execSync(`${CONTAINER_RUNTIME_BIN} ls --format json`, {
+    if (isAppleContainerRuntime(runtimeBin)) {
+      const output = execSync(`${runtimeBin} ls --format json`, {
         stdio: ['pipe', 'pipe', 'pipe'],
         encoding: 'utf-8',
       });
@@ -219,7 +230,7 @@ export function cleanupOrphans(): void {
         .map((c) => c.configuration.id);
     } else {
       const output = execSync(
-        `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format '{{.Names}}'`,
+        `${runtimeBin} ps --filter name=nanoclaw- --format '{{.Names}}'`,
         { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
       );
       orphans = output.trim().split('\n').filter(Boolean);
@@ -227,7 +238,7 @@ export function cleanupOrphans(): void {
 
     for (const name of orphans) {
       try {
-        execSync(stopContainer(name), { stdio: 'pipe' });
+        execSync(stopContainer(name, runtimeBin), { stdio: 'pipe' });
       } catch {
         /* already stopped */
       }
