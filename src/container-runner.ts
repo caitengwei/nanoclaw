@@ -219,6 +219,8 @@ function buildContainerArgs(
     '-e',
     `ANTHROPIC_BASE_URL=http://${getContainerHostGateway()}:${CREDENTIAL_PROXY_PORT}`,
   );
+  // Claude state is mounted at /home/node/.claude even when the process starts as root.
+  args.push('-e', 'HOME=/home/node');
 
   // Mirror the host's auth method with a placeholder value.
   // API key mode: SDK sends x-api-key, proxy replaces with real key.
@@ -234,21 +236,19 @@ function buildContainerArgs(
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
-  // Run as host user so bind-mounted files are accessible.
-  // Skip when running as root (uid 0), as the container's node user (uid 1000),
-  // or when getuid is unavailable (native Windows without WSL).
+  // Main containers need root briefly so the entrypoint can shadow .env, then
+  // drop to the host uid/gid. Non-main containers can run directly as the host user.
   const hostUid = process.getuid?.();
   const hostGid = process.getgid?.();
-  if (hostUid != null && hostUid !== 0 && hostUid !== 1000) {
-    if (isMain) {
-      // Main containers start as root so the entrypoint can mount --bind
-      // to shadow .env. Privileges are dropped via setpriv in entrypoint.sh.
+
+  if (isMain) {
+    args.push('--user', '0');
+    if (hostUid != null && hostGid != null && hostUid !== 0) {
       args.push('-e', `RUN_UID=${hostUid}`);
       args.push('-e', `RUN_GID=${hostGid}`);
-    } else {
-      args.push('--user', `${hostUid}:${hostGid}`);
     }
-    args.push('-e', 'HOME=/home/node');
+  } else if (hostUid != null && hostGid != null && hostUid !== 0) {
+    args.push('--user', `${hostUid}:${hostGid}`);
   }
 
   for (const mount of mounts) {

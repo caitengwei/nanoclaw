@@ -20,18 +20,23 @@ vi.mock('child_process', () => ({
 
 import {
   CONTAINER_RUNTIME_BIN,
+  detectContainerRuntimeBin,
   readonlyMountArgs,
   stopContainer,
   ensureContainerRuntimeRunning,
   cleanupOrphans,
   getContainerHostGateway,
   getProxyBindHost,
+  getRuntimeErrorGuidance,
+  getRuntimeStartCommand,
+  getRuntimeStatusCommand,
 } from './container-runtime.js';
 import { logger } from './logger.js';
 
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
+  delete process.env.CONTAINER_RUNTIME_BIN;
 });
 
 // --- Pure functions ---
@@ -51,6 +56,29 @@ describe('stopContainer', () => {
     expect(stopContainer('nanoclaw-test-123')).toBe(
       `${CONTAINER_RUNTIME_BIN} stop nanoclaw-test-123`,
     );
+  });
+});
+
+describe('runtime selection', () => {
+  it('defaults to Apple Container on macOS', () => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+    delete process.env.CONTAINER_RUNTIME_BIN;
+
+    expect(detectContainerRuntimeBin()).toBe('container');
+  });
+
+  it('defaults to Docker on Linux', () => {
+    vi.spyOn(os, 'platform').mockReturnValue('linux');
+    delete process.env.CONTAINER_RUNTIME_BIN;
+
+    expect(detectContainerRuntimeBin()).toBe('docker');
+  });
+
+  it('prefers CONTAINER_RUNTIME_BIN override', () => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+    process.env.CONTAINER_RUNTIME_BIN = 'docker';
+
+    expect(detectContainerRuntimeBin()).toBe('docker');
   });
 });
 
@@ -101,6 +129,36 @@ describe('Apple Container network addressing', () => {
   });
 });
 
+describe('runtime commands', () => {
+  it('uses container system status/start for Apple Container', () => {
+    expect(getRuntimeStatusCommand('container')).toEqual({
+      command: 'container system status',
+      timeout: 30000,
+    });
+    expect(getRuntimeStartCommand('container')).toEqual({
+      command: 'container system start',
+      timeout: 30000,
+    });
+  });
+
+  it('uses docker info and no start command for Docker', () => {
+    expect(getRuntimeStatusCommand('docker')).toEqual({
+      command: 'docker info',
+      timeout: 10000,
+    });
+    expect(getRuntimeStartCommand('docker')).toBeNull();
+  });
+
+  it('returns runtime-specific failure guidance', () => {
+    expect(getRuntimeErrorGuidance('container')).toContain(
+      'Ensure Apple Container is installed',
+    );
+    expect(getRuntimeErrorGuidance('docker')).toContain(
+      'Ensure docker is installed and running',
+    );
+  });
+});
+
 // --- ensureContainerRuntimeRunning ---
 
 describe('ensureContainerRuntimeRunning', () => {
@@ -112,7 +170,7 @@ describe('ensureContainerRuntimeRunning', () => {
     expect(mockExecSync).toHaveBeenCalledTimes(1);
     expect(mockExecSync).toHaveBeenCalledWith(
       `${CONTAINER_RUNTIME_BIN} system status`,
-      { stdio: 'pipe' },
+      { stdio: 'pipe', timeout: 30000 },
     );
     expect(logger.debug).toHaveBeenCalledWith(
       'Container runtime already running',
