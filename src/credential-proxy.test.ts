@@ -11,7 +11,7 @@ vi.mock('./logger.js', () => ({
   logger: { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() },
 }));
 
-import { startCredentialProxy } from './credential-proxy.js';
+import { buildUpstreamPath, startCredentialProxy } from './credential-proxy.js';
 
 function makeRequest(
   port: number,
@@ -220,5 +220,24 @@ describe('credential-proxy', () => {
 
     expect(res.statusCode).toBe(502);
     expect(res.body).toBe('Bad Gateway');
+  });
+});
+
+describe('buildUpstreamPath', () => {
+  it('prepends the base path for normal request URLs', () => {
+    expect(buildUpstreamPath('/coding', '/v1/messages')).toBe(
+      '/coding/v1/messages',
+    );
+  });
+
+  it('defaults missing request URLs to the base root', () => {
+    expect(buildUpstreamPath('/coding', undefined)).toBe('/coding/');
+    expect(buildUpstreamPath('', undefined)).toBe('/');
+  });
+
+  it('joins non-slash-prefixed request URLs safely', () => {
+    expect(buildUpstreamPath('/coding', 'v1/messages')).toBe(
+      '/coding/v1/messages',
+    );
   });
 });
