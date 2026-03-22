@@ -49,12 +49,15 @@ describe('credential-proxy', () => {
   let proxyPort: number;
   let upstreamPort: number;
   let lastUpstreamHeaders: http.IncomingHttpHeaders;
+  let lastUpstreamPath: string;
 
   beforeEach(async () => {
     lastUpstreamHeaders = {};
+    lastUpstreamPath = '';
 
     upstreamServer = http.createServer((req, res) => {
       lastUpstreamHeaders = { ...req.headers };
+      lastUpstreamPath = req.url || '';
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     });
@@ -65,8 +68,16 @@ describe('credential-proxy', () => {
   });
 
   afterEach(async () => {
-    await new Promise<void>((r) => proxyServer?.close(() => r()));
-    await new Promise<void>((r) => upstreamServer?.close(() => r()));
+    await new Promise<void>((resolve) => {
+      if (!proxyServer) return resolve();
+      proxyServer.closeAllConnections?.();
+      proxyServer.close(() => resolve());
+    });
+    await new Promise<void>((resolve) => {
+      if (!upstreamServer) return resolve();
+      upstreamServer.closeAllConnections?.();
+      upstreamServer.close(() => resolve());
+    });
     for (const key of Object.keys(mockEnv)) delete mockEnv[key];
   });
 
@@ -166,6 +177,27 @@ describe('credential-proxy', () => {
     // custom keep-alive and transfer-encoding must not be forwarded.
     expect(lastUpstreamHeaders['keep-alive']).toBeUndefined();
     expect(lastUpstreamHeaders['transfer-encoding']).toBeUndefined();
+  });
+
+  it('prepends the base path from ANTHROPIC_BASE_URL', async () => {
+    Object.assign(mockEnv, {
+      ANTHROPIC_API_KEY: 'sk-ant-real-key',
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}/coding`,
+    });
+    proxyServer = await startCredentialProxy(0);
+    proxyPort = (proxyServer.address() as AddressInfo).port;
+
+    await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(lastUpstreamPath).toBe('/coding/v1/messages');
   });
 
   it('returns 502 when upstream is unreachable', async () => {

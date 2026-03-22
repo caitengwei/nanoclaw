@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'fs';
+import os from 'os';
 
 // Mock logger
 vi.mock('./logger.js', () => ({
@@ -22,10 +24,13 @@ import {
   stopContainer,
   ensureContainerRuntimeRunning,
   cleanupOrphans,
+  getContainerHostGateway,
+  getProxyBindHost,
 } from './container-runtime.js';
 import { logger } from './logger.js';
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -46,6 +51,53 @@ describe('stopContainer', () => {
     expect(stopContainer('nanoclaw-test-123')).toBe(
       `${CONTAINER_RUNTIME_BIN} stop nanoclaw-test-123`,
     );
+  });
+});
+
+describe('Apple Container network addressing', () => {
+  it('uses the bridge100 IPv4 address for the proxy bind host on macOS', () => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+    vi.spyOn(os, 'networkInterfaces').mockReturnValue({
+      bridge100: [
+        {
+          address: '192.168.64.1',
+          netmask: '255.255.255.0',
+          family: 'IPv4',
+          mac: '00:00:00:00:00:00',
+          internal: false,
+          cidr: '192.168.64.1/24',
+        },
+      ],
+    });
+
+    expect(getProxyBindHost()).toBe('192.168.64.1');
+  });
+
+  it('uses the bridge100 IPv4 address as the Apple Container host gateway', () => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+    vi.spyOn(os, 'networkInterfaces').mockReturnValue({
+      bridge100: [
+        {
+          address: '192.168.64.1',
+          netmask: '255.255.255.0',
+          family: 'IPv4',
+          mac: '00:00:00:00:00:00',
+          internal: false,
+          cidr: '192.168.64.1/24',
+        },
+      ],
+    });
+
+    expect(getContainerHostGateway()).toBe('192.168.64.1');
+  });
+
+  it('keeps loopback on WSL', () => {
+    vi.spyOn(os, 'platform').mockReturnValue('linux');
+    vi.spyOn(fs, 'existsSync').mockImplementation(
+      (target) => target === '/proc/sys/fs/binfmt_misc/WSLInterop',
+    );
+
+    expect(getProxyBindHost()).toBe('127.0.0.1');
   });
 });
 

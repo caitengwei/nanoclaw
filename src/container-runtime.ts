@@ -11,25 +11,53 @@ import { logger } from './logger.js';
 /** The container runtime binary name. */
 export const CONTAINER_RUNTIME_BIN = 'container';
 
-/** Hostname containers use to reach the host machine. */
-export const CONTAINER_HOST_GATEWAY = 'host.docker.internal';
+const APPLE_CONTAINER_BRIDGE_INTERFACE = 'bridge100';
+const DEFAULT_CONTAINER_HOST_GATEWAY = 'host.docker.internal';
+
+function getAppleContainerBridgeHost(): string | null {
+  const bridge = os.networkInterfaces()[APPLE_CONTAINER_BRIDGE_INTERFACE];
+  if (!bridge) return null;
+
+  const ipv4 = bridge.find((a) => a.family === 'IPv4' && !a.internal);
+  return ipv4?.address || null;
+}
+
+/** Hostname/IP containers use to reach the host machine. */
+export function getContainerHostGateway(): string {
+  if (process.env.CONTAINER_HOST_GATEWAY) {
+    return process.env.CONTAINER_HOST_GATEWAY;
+  }
+
+  if (os.platform() === 'darwin' && CONTAINER_RUNTIME_BIN === 'container') {
+    const bridgeHost = getAppleContainerBridgeHost();
+    if (bridgeHost) return bridgeHost;
+  }
+
+  return DEFAULT_CONTAINER_HOST_GATEWAY;
+}
 
 /**
  * Address the credential proxy binds to.
- * Apple Container (macOS): 0.0.0.0 — host.docker.internal resolves to a VM IP,
- *   not loopback, so the proxy must listen on all interfaces.
+ * Apple Container (macOS): bridge100 IPv4 so only the VM-facing interface can reach it.
  * Docker Desktop (macOS): 127.0.0.1 — the VM routes host.docker.internal to loopback.
  * Docker (Linux): bind to the docker0 bridge IP so only containers can reach it,
  *   falling back to 0.0.0.0 if the interface isn't found.
  */
-export const PROXY_BIND_HOST =
-  process.env.CREDENTIAL_PROXY_HOST || detectProxyBindHost();
+export function getProxyBindHost(): string {
+  if (process.env.CREDENTIAL_PROXY_HOST) {
+    return process.env.CREDENTIAL_PROXY_HOST;
+  }
 
-function detectProxyBindHost(): string {
-  // Apple Container uses a VirtioFS VM network where host.docker.internal resolves
-  // to a dedicated VM IP (not the host loopback). Bind to all interfaces.
-  if (os.platform() === 'darwin' && CONTAINER_RUNTIME_BIN === 'container')
-    return '0.0.0.0';
+  if (os.platform() === 'darwin' && CONTAINER_RUNTIME_BIN === 'container') {
+    const bridgeHost = getAppleContainerBridgeHost();
+    if (bridgeHost) return bridgeHost;
+
+    logger.warn(
+      { interface: APPLE_CONTAINER_BRIDGE_INTERFACE },
+      'Apple Container bridge not found, falling back to loopback for credential proxy',
+    );
+    return '127.0.0.1';
+  }
 
   if (os.platform() === 'darwin') return '127.0.0.1';
 

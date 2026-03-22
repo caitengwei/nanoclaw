@@ -19,14 +19,13 @@ import {
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import {
-  CONTAINER_HOST_GATEWAY,
   CONTAINER_RUNTIME_BIN,
+  getContainerHostGateway,
   hostGatewayArgs,
   readonlyMountArgs,
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
-import { readEnvFile } from './env.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -216,36 +215,20 @@ function buildContainerArgs(
   args.push('-e', `TZ=${TIMEZONE}`);
 
   // Route API traffic through the credential proxy (containers never see real secrets)
-  // For Apple Container, the credential proxy is unreachable from inside the VM
-  // (host.docker.internal TCP responses don't flow back). Pass credentials directly.
-  const directSecrets = readEnvFile([
-    'ANTHROPIC_API_KEY',
-    'ANTHROPIC_BASE_URL',
-  ]);
-  if (
-    CONTAINER_RUNTIME_BIN === 'container' &&
-    directSecrets.ANTHROPIC_API_KEY
-  ) {
-    args.push('-e', `ANTHROPIC_API_KEY=${directSecrets.ANTHROPIC_API_KEY}`);
-    if (directSecrets.ANTHROPIC_BASE_URL) {
-      args.push('-e', `ANTHROPIC_BASE_URL=${directSecrets.ANTHROPIC_BASE_URL}`);
-    }
-  } else {
-    args.push(
-      '-e',
-      `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
-    );
+  args.push(
+    '-e',
+    `ANTHROPIC_BASE_URL=http://${getContainerHostGateway()}:${CREDENTIAL_PROXY_PORT}`,
+  );
 
-    // Mirror the host's auth method with a placeholder value.
-    // API key mode: SDK sends x-api-key, proxy replaces with real key.
-    // OAuth mode:   SDK exchanges placeholder token for temp API key,
-    //               proxy injects real OAuth token on that exchange request.
-    const authMode = detectAuthMode();
-    if (authMode === 'api-key') {
-      args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
-    } else {
-      args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
-    }
+  // Mirror the host's auth method with a placeholder value.
+  // API key mode: SDK sends x-api-key, proxy replaces with real key.
+  // OAuth mode:   SDK exchanges placeholder token for temp API key,
+  //               proxy injects real OAuth token on that exchange request.
+  const authMode = detectAuthMode();
+  if (authMode === 'api-key') {
+    args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+  } else {
+    args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
 
   // Runtime-specific args for host gateway resolution
