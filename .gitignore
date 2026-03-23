@@ -13,10 +13,22 @@ logs/
 groups/*
 !groups/main/
 !groups/global/
+!groups/investment/
+!groups/bar/
 groups/main/*
 groups/global/*
+groups/investment/*
+groups/bar/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/investment/CLAUDE.md
+!groups/investment/MEMORY.md
+!groups/bar/CLAUDE.md
+!groups/bar/MEMORY.md
+!groups/tech/
+groups/tech/*
+!groups/tech/CLAUDE.md
+!groups/tech/MEMORY.md
 
 # Secrets
 *.keys.json
@@ -36,3 +48,4 @@ groups/global/*
 .nanoclaw/
 
 agents-sdk-docs
+.worktrees/
