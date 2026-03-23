@@ -578,7 +578,7 @@ async function main(): Promise<void> {
       hadError = true;
       const errorMsg = err instanceof Error ? err.message : String(err);
       log(`Slash command error: ${errorMsg}`);
-      writeOutput({ status: 'error', result: null, error: errorMsg });
+      writeOutput({ status: 'error', result: null, error: errorMsg, newSessionId: slashSessionId });
     }
 
     log(`Slash command done. compactBoundarySeen=${compactBoundarySeen}, hadError=${hadError}`);
