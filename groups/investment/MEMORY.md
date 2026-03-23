@@ -14,6 +14,8 @@
 ## 宏观笔记
 - macro-notes.md
 
-## 高频模板（待实现）
-- 剧本模板：trade-playbook skill（计划中，container/skills/ 暂未安装）
-- 市场摘要：market-brief skill（计划中，container/skills/ 暂未安装）
+## 高频模板
+- 剧本模板：trade-playbook skill（已提供于 `container/skills/trade-playbook/`）
+- 市场摘要：market-brief skill（已提供于 `container/skills/market-brief/`）
+- 宏观扫描：macro-scan skill（已提供于 `container/skills/macro-scan/`）
+- 仓位复盘：portfolio-journal skill（已提供于 `container/skills/portfolio-journal/`）
